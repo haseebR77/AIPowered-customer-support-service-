@@ -233,7 +233,7 @@ export default function App() {
                 disabled={loadingLogs}
                 className={loadingLogs ? "is-loading" : ""}
               >
-                {loadingLogs ? "Loading..." : "View Logs"}
+                {loadingLogs ? "Loading..." : "View Log"}
               </button>
             </div>
 

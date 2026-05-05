@@ -180,3 +180,12 @@ Executed in modules:
 - SQLite logging implemented and visible via API/UI.
 - Accuracy evaluation script included.
 - Modular, readable, and locally runnable codebase.
+
+## Assignment 4: Testing & Validation
+Run the following commands from project root:
+
+```bash
+pip install -r backend/requirements.txt
+pytest
+python evaluate.py
+```

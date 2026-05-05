@@ -89,3 +89,8 @@ def escalate_query(payload: EscalateRequest, db: Session = Depends(get_db)):
 def get_logs(db: Session = Depends(get_db)):
     logs = db.query(InteractionLog).order_by(InteractionLog.id.desc()).all()
     return logs
+
+
+@app.get("/log", response_model=List[LogOut])
+def get_log_alias(db: Session = Depends(get_db)):
+    return get_logs(db)
