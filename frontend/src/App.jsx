@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { askQuestion, escalateQuery, getLogs } from "./api";
 
 function formatTimestamp(ts) {
@@ -12,6 +12,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const chatWindowRef = useRef(null);
+  const chatBottomRef = useRef(null);
 
   const lastUserQuery = useMemo(() => {
     const userMessages = chatHistory.filter((item) => item.role === "user");
@@ -28,6 +31,12 @@ export default function App() {
     [chatHistory]
   );
 
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      chatBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
+  }, [chatHistory, loading, query]);
+
   async function handleSend(e) {
     e.preventDefault();
 
@@ -36,6 +45,7 @@ export default function App() {
 
     setLoading(true);
     setError("");
+    setInfo("");
 
     const userMessage = { role: "user", text: trimmed, ts: Date.now() };
     setChatHistory((prev) => [...prev, userMessage]);
@@ -49,10 +59,14 @@ export default function App() {
         domain: result.domain,
         intent: result.intent,
         confidence: result.confidence,
+        responseTimeMs: result.response_time_ms,
         escalated: result.escalated,
         ts: Date.now(),
       };
       setChatHistory((prev) => [...prev, botMessage]);
+      if (result.escalated) {
+        setInfo("This query was escalated to human support due to confidence/safety rules.");
+      }
     } catch (err) {
       const errorMessage = err.message || "Unexpected error while sending query.";
       setError(errorMessage);
@@ -79,6 +93,7 @@ export default function App() {
     }
 
     setError("");
+    setInfo("");
     try {
       const result = await escalateQuery(
         lastUserQuery,
@@ -97,7 +112,9 @@ export default function App() {
         },
       ]);
 
-      if (!result.escalated) {
+      if (result.status === "success") {
+        setInfo(result.message);
+      } else {
         setError("Escalation request was not confirmed by backend.");
       }
     } catch (err) {
@@ -151,7 +168,7 @@ export default function App() {
                 Support AI
               </div>
             </div>
-            <div className="chat-window">
+            <div className="chat-window" ref={chatWindowRef}>
               {chatHistory.length === 0 && (
                 <div className="empty-state">
                   <h3>Start a conversation</h3>
@@ -177,6 +194,9 @@ export default function App() {
                         <span className="confidence">
                           Confidence: {Number(item.confidence).toFixed(2)}
                         </span>
+                        {item.responseTimeMs !== undefined && (
+                          <span className="intent">Latency: {Number(item.responseTimeMs).toFixed(0)}ms</span>
+                        )}
                         {item.escalated && <span className="badge">Escalated</span>}
                       </>
                     )}
@@ -184,6 +204,16 @@ export default function App() {
                   <p>{item.text}</p>
                 </div>
               ))}
+
+              {query.trim() && !loading && (
+                <div className="message user" aria-live="polite">
+                  <div className="message-head">
+                    <span>You</span>
+                    <span className="intent">Typing...</span>
+                  </div>
+                  <p>{query}</p>
+                </div>
+              )}
 
               {loading && (
                 <div className="message bot typing" aria-live="polite">
@@ -198,6 +228,7 @@ export default function App() {
                   </div>
                 </div>
               )}
+              <div ref={chatBottomRef} />
             </div>
 
             <form className="chat-form" onSubmit={handleSend}>
@@ -218,6 +249,7 @@ export default function App() {
             </button>
 
             {error && <p className="error">{error}</p>}
+            {info && <p className="info">{info}</p>}
           </section>
 
           <section className="logs-card">
@@ -268,6 +300,9 @@ export default function App() {
                   </p>
                   <p>
                     <strong>Escalated:</strong> {log.escalated ? "Yes" : "No"}
+                  </p>
+                  <p>
+                    <strong>Latency:</strong> {Number(log.response_time_ms || 0).toFixed(0)} ms
                   </p>
                 </div>
               ))}

@@ -35,6 +35,8 @@ class SupportChatbot:
         self._embedding_model = None
         self._faq_embeddings = None
         self._load_embedding_model()
+        self._response_cache: Dict[str, Dict[str, object]] = {}
+        self._cache_limit = 512
 
         self.keyword_map: Dict[str, List[str]] = {
             "order_status": [
@@ -191,8 +193,14 @@ class SupportChatbot:
         )
 
     def ask(self, query: str) -> Dict[str, object]:
+        normalized = " ".join(query.lower().split())
+        cached = self._response_cache.get(normalized)
+        if cached is not None:
+            # Return a copy so callers can safely append metadata.
+            return dict(cached)
+
         result = self._find_best_faq(query=query)
-        return {
+        payload = {
             "query": query,
             "domain": result.domain,
             "intent": result.intent,
@@ -200,3 +208,9 @@ class SupportChatbot:
             "confidence": result.confidence,
             "escalated": result.escalated,
         }
+        if len(self._response_cache) >= self._cache_limit:
+            # Lightweight FIFO-style eviction for predictable memory usage.
+            oldest = next(iter(self._response_cache))
+            self._response_cache.pop(oldest, None)
+        self._response_cache[normalized] = dict(payload)
+        return payload

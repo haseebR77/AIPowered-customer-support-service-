@@ -47,10 +47,11 @@ def test_ask_endpoint_success(client: TestClient):
     response = client.post("/ask", json={"query": "Where is my order?"})
     assert response.status_code == 200
     payload = response.json()
-    for key in ["query", "domain", "intent", "response", "confidence", "escalated"]:
+    for key in ["query", "domain", "intent", "response", "confidence", "escalated", "response_time_ms"]:
         assert key in payload
     assert payload["domain"] == "ecommerce"
     assert payload["intent"] == "order_status"
+    assert payload["response_time_ms"] >= 0
 
 
 def test_ask_endpoint_empty_query_validation(client: TestClient):
@@ -88,6 +89,7 @@ def test_logs_and_log_alias(client: TestClient):
         "confidence",
         "bot_response",
         "escalated",
+        "response_time_ms",
         "timestamp",
     ]:
         assert key in first_log
@@ -145,4 +147,9 @@ def test_required_domain_examples(client: TestClient):
         assert payload["domain"] == domain
         assert payload["intent"] == intent
         assert payload["escalated"] is escalated
+
+
+def test_ask_rejects_whitespace_query(client: TestClient):
+    response = client.post("/ask", json={"query": "   "})
+    assert response.status_code in (400, 422)
 

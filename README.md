@@ -1,30 +1,138 @@
 # AI-Powered Customer Support Service
 
-This is a full-stack customer support chatbot built with React + FastAPI.
-It supports three domains:
+AI-powered chatbot service for FAQ handling and support request triage across multiple service domains.
 
-- Ecommerce
-- Healthcare
-- Banking
+## Overview
 
-For each query, the bot detects domain and intent, generates a response, assigns confidence, decides escalation, and stores the interaction in SQLite logs.
+This project implements a full-stack customer support assistant using a pretrained NLP model and a FastAPI backend.  
+The chatbot supports:
 
-## Key Features
+- FAQ answering
+- Intent and domain classification
+- Confidence scoring
+- Escalation handling
+- Interaction logging
 
-- Domain detection (`ecommerce`, `healthcare`, `banking`, `general`)
-- Intent detection for each domain
-- Confidence-based and safety-based escalation
-- Manual escalation endpoint
-- Persistent logs with domain, intent, response, and timestamp
-- Frontend chat UI with interaction logs
+The implementation is case-independent and uses a synthetic knowledge base to avoid dependency on any specific company dataset.
 
 ## Tech Stack
 
 - Frontend: React + Vite
 - Backend: FastAPI (Python)
-- NLP approach: Sentence embeddings with lexical/keyword fallback
+- AI/NLP: `sentence-transformers/all-MiniLM-L6-v2` with lexical fallback
 - Database: SQLite + SQLAlchemy
 - Testing: PyTest
+
+## Pretrained Model Used
+
+This project uses the pretrained Sentence Transformer model:
+`sentence-transformers/all-MiniLM-L6-v2`
+
+## Architecture
+
+`User -> React Frontend -> FastAPI Backend -> NLP Layer -> SQLite Database`
+
+- `frontend/src/App.jsx`: chat UI and user interactions
+- `frontend/src/api.js`: API client layer
+- `backend/main.py`: API routes, orchestration, logging
+- `backend/chatbot.py`: domain/intent detection + confidence + escalation logic
+- `backend/faq_data.py`: synthetic domain intents and responses
+- `backend/models.py`: request/response and DB models
+- `backend/database.py`: database connection/session management
+
+## Why This NLP Model
+
+Model used: `sentence-transformers/all-MiniLM-L6-v2`
+
+Why selected:
+- Lightweight and fast for local inference
+- Strong semantic similarity quality for FAQ-style intent matching
+- Works well with short support queries
+
+How matching works:
+1. Keyword matching (fast path for known intent phrases)
+2. Embedding similarity (semantic search over FAQ questions)
+3. Lexical fallback if model is unavailable
+
+Confidence logic:
+- Keyword hit starts from high confidence
+- Semantic/lexical similarity scores are normalized into confidence values
+
+Escalation logic:
+- Base threshold: `confidence < 0.50 -> escalated`
+- Forced escalation for sensitive intents (e.g. urgent medical help, unknown transaction, blocked card)
+- Unknown fallback for complex/unrecognized queries
+
+## Supported Domains
+
+### Ecommerce
+- `order_status`, `refund_request`, `return_policy`, `delivery_info`, `payment_methods`
+
+### Healthcare
+- `appointment_booking`, `clinic_timings`, `online_consultation`, `cancel_appointment`, `urgent_medical_help`
+
+### Banking
+- `atm_pin_reset`, `card_blocked`, `unknown_transaction`, `account_opening`, `payment_failed`
+
+## API Endpoints
+
+### `POST /ask`
+Classifies and responds to a user query, then logs the interaction.
+
+Example response:
+```json
+{
+  "query": "Where is my order?",
+  "domain": "ecommerce",
+  "intent": "order_status",
+  "confidence": 0.83,
+  "response": "You can track your order using your order ID in the order tracking section.",
+  "escalated": false,
+  "response_time_ms": 54.2
+}
+```
+
+### `POST /escalate`
+Manual escalation route.
+
+```json
+{
+  "status": "success",
+  "message": "Your query has been escalated to human support."
+}
+```
+
+### `GET /logs`
+Returns full interaction logs (latest first).
+
+### `GET /log`
+Alias route for `/logs`.
+
+### `GET /health`
+Service health check.
+
+Swagger/OpenAPI docs: `http://127.0.0.1:8000/docs`
+
+## Logging Schema
+
+Each interaction stores:
+- `user_query`
+- `detected_domain`
+- `detected_intent`
+- `bot_response`
+- `confidence`
+- `escalated`
+- `response_time_ms`
+- `timestamp`
+
+Database file: `backend/support_logs.db`
+
+## Performance and Accuracy Notes
+
+- Target response time: `< 2s`
+- Lightweight query-result caching is enabled in chatbot inference path.
+- Existing tests validate routing, intent behavior, escalation, and log integrity.
+- Accuracy target is `> 80%` for synthetic domain test queries.
 
 ## Run Locally
 
@@ -34,139 +142,50 @@ From project root:
 pip install -r backend/requirements.txt
 ```
 
-Start backend (Terminal 1):
-
+Backend:
 ```bash
 cd backend
 uvicorn main:app --reload
 ```
 
-Backend: `http://127.0.0.1:8000`
-
-Start frontend (Terminal 2):
-
+Frontend:
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Frontend: `http://localhost:5173`
+URLs:
+- Backend: `http://127.0.0.1:8000`
+- Frontend: `http://localhost:5173`
 
-## API
+## Testing
 
-### `POST /ask`
-
-Returns:
-
-```json
-{
-  "query": "Where is my order?",
-  "domain": "ecommerce",
-  "intent": "order_status",
-  "confidence": 0.92,
-  "response": "You can track your order using your order ID in the order tracking section.",
-  "escalated": false
-}
-```
-
-### `POST /escalate`
-
-Manual escalation response:
-
-```json
-{
-  "status": "success",
-  "message": "Your query has been escalated to human support."
-}
-```
-
-### Other routes
-- `GET /logs` and `GET /log`: returns logs (latest first)
-- `GET /health`: service health check
-
-## Supported Domains and Intents
-
-### Ecommerce
-
-- `order_status`
-- `refund_request`
-- `return_policy`
-- `delivery_info`
-- `payment_methods`
-
-### Healthcare
-
-- `appointment_booking`
-- `clinic_timings`
-- `online_consultation`
-- `cancel_appointment`
-- `urgent_medical_help`
-
-### Banking
-
-- `atm_pin_reset`
-- `card_blocked`
-- `unknown_transaction`
-- `account_opening`
-- `payment_failed`
-
-## Escalation Rules
-
-- Threshold:
-  - `confidence < 0.50` => escalated
-  - `confidence >= 0.50` => not escalated
-
-- Forced escalation also applies to sensitive cases:
-  - urgent medical help
-  - unknown transaction
-  - blocked card
-  - payment failed with deducted amount context
-  - explicit request for human support
-  - unknown/complex queries
-
-Unknown fallback example:
-
-```json
-{
-  "query": "My problem is very complicated and not listed here.",
-  "domain": "general",
-  "intent": "unknown",
-  "confidence": 0.49,
-  "response": "I am not fully sure about this issue, so I will escalate it to human support.",
-  "escalated": true
-}
-```
-
-## Log Fields
-
-Each log entry stores:
-
-```json
-{
-  "user_query": "Where is my order?",
-  "detected_domain": "ecommerce",
-  "detected_intent": "order_status",
-  "confidence": 0.92,
-  "bot_response": "You can track your order using your order ID in the order tracking section.",
-  "escalated": false,
-  "timestamp": "2026-05-09 14:30:00"
-}
-```
-
-## Run Tests
-
+Run all tests:
 ```bash
 pytest
 ```
 
-Optional:
+Optional evaluation script:
 ```bash
 python evaluate.py
 ```
 
-## Quick Demo Queries
+## Clean Submission Notes
 
-- Ecommerce: `Where is my order?`, `I want a refund.`
-- Healthcare: `How can I book a doctor appointment?`, `I need urgent medical help.`
-- Banking: `How can I reset my ATM PIN?`, `I found an unknown transaction.`
+For final university submission zip, exclude generated/runtime folders:
+- `frontend/node_modules`
+- `.git`
+- `__pycache__`
+- `.pytest_cache`
+
+These are already ignored by `.gitignore`.
+
+## Future Enhancements
+
+- LLM integration (OpenAI-compatible route)
+- Multilingual intent support
+- Voice chatbot interface
+- Human-support dashboard with ticket lifecycle
+- Authentication and role-based access
+- Fine-tuned domain transformer model

@@ -86,4 +86,5 @@ def test_100_concurrent_requests(performance_client):
     print(f"Max latency: {max_latency:.4f} seconds")
 
     assert success_rate >= 90
+    assert avg_latency < 2.0
 
