@@ -6,12 +6,6 @@ function formatTimestamp(ts) {
 }
 
 export default function App() {
-  const quickPrompts = [
-    "Where is my order?",
-    "How can I return a product?",
-    "Why did my payment fail?",
-    "How do I download my invoice?",
-  ];
   const [query, setQuery] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -52,6 +46,7 @@ export default function App() {
       const botMessage = {
         role: "bot",
         text: result.response,
+        domain: result.domain,
         intent: result.intent,
         confidence: result.confidence,
         escalated: result.escalated,
@@ -59,7 +54,19 @@ export default function App() {
       };
       setChatHistory((prev) => [...prev, botMessage]);
     } catch (err) {
-      setError(err.message || "Unexpected error while sending query.");
+      const errorMessage = err.message || "Unexpected error while sending query.";
+      setError(errorMessage);
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: "bot",
+          text: `I could not process your request right now: ${errorMessage}`,
+          intent: "system_error",
+          confidence: 0,
+          escalated: true,
+          ts: Date.now(),
+        },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -165,6 +172,7 @@ export default function App() {
                     <span>{item.role === "user" ? "You" : "Bot"}</span>
                     {item.role === "bot" && (
                       <>
+                        <span className="intent">Domain: {item.domain || "general"}</span>
                         <span className="intent">Intent: {item.intent}</span>
                         <span className="confidence">
                           Confidence: {Number(item.confidence).toFixed(2)}
@@ -190,19 +198,6 @@ export default function App() {
                   </div>
                 </div>
               )}
-            </div>
-
-            <div className="prompt-row">
-              {quickPrompts.map((prompt) => (
-                <button
-                  key={prompt}
-                  type="button"
-                  className="prompt-chip"
-                  onClick={() => setQuery(prompt)}
-                >
-                  {prompt}
-                </button>
-              ))}
             </div>
 
             <form className="chat-form" onSubmit={handleSend}>
@@ -258,6 +253,9 @@ export default function App() {
                   </div>
                   <p>
                     <strong>Query:</strong> {log.user_query}
+                  </p>
+                  <p>
+                    <strong>Domain:</strong> {log.detected_domain || "general"}
                   </p>
                   <p>
                     <strong>Intent:</strong> {log.detected_intent}

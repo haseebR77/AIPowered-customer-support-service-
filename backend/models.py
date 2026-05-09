@@ -14,6 +14,7 @@ class InteractionLog(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_query = Column(String, nullable=False)
+    detected_domain = Column(String, nullable=False, default="general")
     detected_intent = Column(String, nullable=False, default="unknown")
     bot_response = Column(String, nullable=False)
     confidence = Column(Float, nullable=False)
@@ -32,6 +33,7 @@ class EscalateRequest(BaseModel):
 
 class AskResponse(BaseModel):
     query: str
+    domain: str
     intent: str
     response: str
     confidence: float
@@ -41,6 +43,7 @@ class AskResponse(BaseModel):
 class LogOut(BaseModel):
     id: int
     user_query: str
+    detected_domain: str
     detected_intent: str
     bot_response: str
     confidence: float

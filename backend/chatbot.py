@@ -14,6 +14,7 @@ except ImportError:  # pragma: no cover - allows running from backend directory
 
 @dataclass
 class MatchResult:
+    domain: str
     intent: str
     answer: str
     confidence: float
@@ -23,12 +24,12 @@ class MatchResult:
 class SupportChatbot:
     """FAQ matching chatbot using sentence embeddings with robust lexical fallbacks."""
 
-    def __init__(self, threshold: float = 0.62) -> None:
+    def __init__(self, threshold: float = 0.50) -> None:
         self.threshold = threshold
         self.faq_entries = FAQ_ENTRIES
         self.questions: List[str] = [entry["question"] for entry in self.faq_entries]
-        self.intent_to_answer = {
-            entry["intent"]: entry["answer"] for entry in self.faq_entries
+        self.intent_to_faq = {
+            entry["intent"]: entry for entry in self.faq_entries
         }
 
         self._embedding_model = None
@@ -43,36 +44,34 @@ class SupportChatbot:
                 "order status",
                 "order update",
             ],
-            "refund_policy": ["refund", "money back", "refund policy", "refund status"],
+            "refund_request": ["refund", "money back", "refund request", "refund status"],
             "return_policy": ["return", "send back", "return policy", "return item"],
-            "delivery_time": ["delivery", "arrive", "shipping time", "how long", "days"],
-            "cancel_order": ["cancel", "stop order", "cancel order"],
-            "payment_failure": [
-                "payment failed",
-                "payment failure",
-                "card declined",
-                "transaction failed",
-                "could not pay",
-                "payment failing",
-                "failing payment",
-                "payment is failing",
-            ],
-            "product_availability": ["in stock", "available", "out of stock", "availability"],
-            "shipping_charges": ["shipping charge", "shipping fee", "delivery fee", "shipping cost"],
-            "damaged_product": ["damaged", "broken", "defective", "received damage"],
-            "exchange_policy": ["exchange", "replace size", "swap item"],
-            "account_login_issue": ["login", "log in", "sign in", "password reset", "account access"],
-            "coupon_issue": ["coupon", "discount code", "promo code", "voucher"],
-            "warranty_info": ["warranty", "guarantee", "covered"],
-            "contact_support": [
-                "contact support",
-                "talk to agent",
-                "customer service",
-                "help center",
-                "support",
-            ],
-            "invoice_request": ["invoice", "bill", "receipt", "tax invoice"],
+            "delivery_info": ["delivery", "arrive", "shipping time", "how long", "days"],
+            "payment_methods": ["payment method", "payment options", "cards accepted", "wallet"],
+            "appointment_booking": ["book appointment", "doctor appointment", "appointment booking"],
+            "clinic_timings": ["clinic timing", "clinic hours", "open clinic", "visiting hours"],
+            "online_consultation": ["online consultation", "video consultation", "telemedicine"],
+            "cancel_appointment": ["cancel appointment", "reschedule appointment"],
+            "urgent_medical_help": ["urgent medical help", "emergency", "severe pain", "ambulance"],
+            "atm_pin_reset": ["atm pin", "reset pin", "debit pin", "card pin"],
+            "card_blocked": ["card blocked", "blocked card", "card locked"],
+            "unknown_transaction": ["unknown transaction", "unauthorized transaction", "fraud transaction"],
+            "account_opening": ["open account", "new bank account", "account opening"],
+            "payment_failed": ["payment failed", "transaction failed", "amount deducted", "deducted but failed"],
         }
+        self._forced_escalation_intents = {
+            "urgent_medical_help",
+            "unknown_transaction",
+            "card_blocked",
+            "payment_failed",
+        }
+        self._human_support_keywords = [
+            "human support",
+            "human agent",
+            "talk to agent",
+            "customer support",
+            "representative",
+        ]
 
     def _load_embedding_model(self) -> None:
         """Loads a lightweight pretrained model when available."""
@@ -126,15 +125,28 @@ class SupportChatbot:
 
         return None
 
+    def _should_force_escalation(self, query: str, intent: str) -> bool:
+        query_lower = query.lower()
+        if intent in self._forced_escalation_intents:
+            return True
+        if any(keyword in query_lower for keyword in self._human_support_keywords):
+            return True
+        if "payment" in query_lower and "deducted" in query_lower:
+            return True
+        return False
+
     def _find_best_faq(self, query: str) -> MatchResult:
         keyword_result = self._keyword_match(query)
         if keyword_result:
             intent, confidence = keyword_result
+            selected_faq = self.intent_to_faq[intent]
+            force_escalation = self._should_force_escalation(query, intent)
             return MatchResult(
+                domain=selected_faq["domain"],
                 intent=intent,
-                answer=self.intent_to_answer[intent],
+                answer=selected_faq["answer"],
                 confidence=round(confidence, 2),
-                escalated=False,
+                escalated=force_escalation or round(confidence, 2) < self.threshold,
             )
 
         embed_scores = self._embedding_similarity(query)
@@ -149,19 +161,29 @@ class SupportChatbot:
 
         selected = self.faq_entries[best_index]
         escalated = best_score < self.threshold
+        force_escalation = self._should_force_escalation(query, selected["intent"])
 
-        if escalated:
+        if escalated or force_escalation:
+            if selected["intent"] in self._forced_escalation_intents and best_score >= self.threshold:
+                return MatchResult(
+                    domain=selected["domain"],
+                    intent=selected["intent"],
+                    answer=selected["answer"],
+                    confidence=round(best_score, 2),
+                    escalated=True,
+                )
             return MatchResult(
+                domain="general",
                 intent="unknown",
                 answer=(
-                    "I could not confidently answer your query. "
-                    "Your request has been escalated to a human support agent."
+                    "I am not fully sure about this issue, so I will escalate it to human support."
                 ),
-                confidence=round(best_score, 2),
+                confidence=round(min(best_score, 0.49), 2),
                 escalated=True,
             )
 
         return MatchResult(
+            domain=selected["domain"],
             intent=selected["intent"],
             answer=selected["answer"],
             confidence=round(best_score, 2),
@@ -172,6 +194,7 @@ class SupportChatbot:
         result = self._find_best_faq(query=query)
         return {
             "query": query,
+            "domain": result.domain,
             "intent": result.intent,
             "response": result.answer,
             "confidence": result.confidence,

@@ -1,191 +1,172 @@
 # AI-Powered Customer Support Service
 
-## Project Overview
-This project is a complete full-stack customer support chatbot for e-commerce FAQs and service requests. It uses a pretrained NLP sentence-embedding model to match customer questions with synthetic FAQ answers, escalates low-confidence queries to human support, and logs every interaction in SQLite.
+This is a full-stack customer support chatbot built with React + FastAPI.
+It supports three domains:
 
-## Features
-- Answers common customer support FAQs.
-- Handles service topics: order status, refunds, returns, delivery, payment issues, availability, and more.
-- Confidence-based escalation to human support.
-- Manual escalation endpoint and UI trigger.
-- Full interaction logging in SQLite.
-- React chat UI with confidence and escalation badges.
-- Logs viewer in the frontend.
-- Evaluation script for intent accuracy.
+- Ecommerce
+- Healthcare
+- Banking
+
+For each query, the bot detects domain and intent, generates a response, assigns confidence, decides escalation, and stores the interaction in SQLite logs.
+
+## Key Features
+
+- Domain detection (`ecommerce`, `healthcare`, `banking`, `general`)
+- Intent detection for each domain
+- Confidence-based and safety-based escalation
+- Manual escalation endpoint
+- Persistent logs with domain, intent, response, and timestamp
+- Frontend chat UI with interaction logs
 
 ## Tech Stack
+
 - Frontend: React + Vite
 - Backend: FastAPI (Python)
-- NLP: `sentence-transformers/all-MiniLM-L6-v2` (with lexical fallback)
+- NLP approach: Sentence embeddings with lexical/keyword fallback
 - Database: SQLite + SQLAlchemy
+- Testing: PyTest
 
-## Folder Structure
-```text
-PFAI_Assignment_03/
-+-- backend/
-¦   +-- __init__.py
-¦   +-- main.py
-¦   +-- database.py
-¦   +-- models.py
-¦   +-- chatbot.py
-¦   +-- faq_data.py
-¦   +-- requirements.txt
-+-- frontend/
-¦   +-- package.json
-¦   +-- vite.config.js
-¦   +-- index.html
-¦   +-- src/
-¦       +-- App.jsx
-¦       +-- main.jsx
-¦       +-- api.js
-¦       +-- styles.css
-+-- evaluate.py
-+-- README.md
+## Run Locally
+
+From project root:
+
+```bash
+pip install -r backend/requirements.txt
 ```
 
-## How to Run Backend
+Start backend (Terminal 1):
+
 ```bash
 cd backend
-pip install -r requirements.txt
 uvicorn main:app --reload
 ```
-Backend runs at `http://127.0.0.1:8000`.
 
-## How to Run Frontend
+Backend: `http://127.0.0.1:8000`
+
+Start frontend (Terminal 2):
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Frontend runs at `http://127.0.0.1:5173`.
 
-## API Endpoints
+Frontend: `http://localhost:5173`
+
+## API
+
 ### `POST /ask`
-- Accepts a user query.
-- Detects best FAQ intent.
-- Returns answer, confidence, escalation status.
-- Logs interaction to SQLite.
 
-Example response:
+Returns:
+
 ```json
 {
-  "query": "How can I return my product?",
-  "intent": "return_policy",
-  "response": "You can return eligible products within 7 days of delivery...",
-  "confidence": 0.91,
+  "query": "Where is my order?",
+  "domain": "ecommerce",
+  "intent": "order_status",
+  "confidence": 0.92,
+  "response": "You can track your order using your order ID in the order tracking section.",
   "escalated": false
 }
 ```
 
-Low-confidence example:
+### `POST /escalate`
+
+Manual escalation response:
+
 ```json
 {
-  "query": "My problem is complicated",
+  "status": "success",
+  "message": "Your query has been escalated to human support."
+}
+```
+
+### Other routes
+- `GET /logs` and `GET /log`: returns logs (latest first)
+- `GET /health`: service health check
+
+## Supported Domains and Intents
+
+### Ecommerce
+
+- `order_status`
+- `refund_request`
+- `return_policy`
+- `delivery_info`
+- `payment_methods`
+
+### Healthcare
+
+- `appointment_booking`
+- `clinic_timings`
+- `online_consultation`
+- `cancel_appointment`
+- `urgent_medical_help`
+
+### Banking
+
+- `atm_pin_reset`
+- `card_blocked`
+- `unknown_transaction`
+- `account_opening`
+- `payment_failed`
+
+## Escalation Rules
+
+- Threshold:
+  - `confidence < 0.50` => escalated
+  - `confidence >= 0.50` => not escalated
+
+- Forced escalation also applies to sensitive cases:
+  - urgent medical help
+  - unknown transaction
+  - blocked card
+  - payment failed with deducted amount context
+  - explicit request for human support
+  - unknown/complex queries
+
+Unknown fallback example:
+
+```json
+{
+  "query": "My problem is very complicated and not listed here.",
+  "domain": "general",
   "intent": "unknown",
-  "response": "I could not confidently answer your query. Your request has been escalated to a human support agent.",
-  "confidence": 0.42,
+  "confidence": 0.49,
+  "response": "I am not fully sure about this issue, so I will escalate it to human support.",
   "escalated": true
 }
 ```
 
-### `POST /escalate`
-- Manually escalates a query to a human agent.
-- Stores escalation record in logs.
+## Log Fields
 
-### `GET /logs`
-- Returns all interaction logs in reverse chronological order.
+Each log entry stores:
 
-### `GET /health`
-- Health check endpoint.
-
-## Example Queries
-- "Where is my order?"
-- "How do I return a product?"
-- "Why did my payment fail?"
-- "Can I cancel my order?"
-- "How can I download my invoice?"
-
-## Escalation Logic
-- Chatbot computes a confidence score from semantic similarity.
-- If confidence is below threshold (`0.62`), it escalates automatically.
-- Users can also manually escalate through `POST /escalate` or the frontend button.
-
-## Log Storage
-Logs are stored in SQLite (`backend/support_logs.db`) with:
-- `id`
-- `user_query`
-- `detected_intent`
-- `bot_response`
-- `confidence`
-- `escalated`
-- `timestamp`
-
-## Testing and Accuracy Evaluation
-Run:
-```bash
-python evaluate.py
+```json
+{
+  "user_query": "Where is my order?",
+  "detected_domain": "ecommerce",
+  "detected_intent": "order_status",
+  "confidence": 0.92,
+  "bot_response": "You can track your order using your order ID in the order tracking section.",
+  "escalated": false,
+  "timestamp": "2026-05-09 14:30:00"
+}
 ```
-The script prints:
-- Total test queries
-- Correct predictions
-- Accuracy percentage
 
-Target for assignment: **Above 80%**.
-
-## Plan-Driven Design Explanation
-### 1. Requirement Analysis
-Functional requirements implemented:
-- FAQ answering
-- Service request handling for key support intents
-- Low-confidence escalation
-- Logging every interaction in database
-
-Non-functional requirements addressed:
-- Fast FAQ lookup via precomputed embeddings (target <2s)
-- Evaluation script for >80% accuracy check
-- Modular backend/frontend folder design
-- Case-independent query matching through normalized similarity
-
-### 2. System Design
-Architecture:
-- React frontend chat interface with logs viewer
-- FastAPI backend exposing `/ask`, `/escalate`, `/logs`, `/health`
-- AI layer using pretrained sentence-transformer similarity
-- SQLite persistence via SQLAlchemy models
-
-### 3. Implementation Plan
-Executed in modules:
-- `faq_data.py` for synthetic FAQ knowledge base
-- `chatbot.py` for intent matching and confidence scoring
-- `database.py` + `models.py` for schema/session management
-- `main.py` for API orchestration and CORS
-- React UI (`App.jsx`, `api.js`, `styles.css`) for user interaction
-- `evaluate.py` for measurable testing
-
-### 4. Case Independence
-- FAQ data is synthetic and general e-commerce support data.
-- No private company data is required.
-- Intents and responses are reusable across multiple e-commerce businesses.
-
-### 5. Testing and Evaluation
-- `evaluate.py` runs 12 sample queries across multiple intents.
-- Accuracy is calculated as `correct / total`.
-- Confirms assignment target performance and validates chatbot behavior.
-
-## How This Satisfies Assignment Requirements
-- Full stack implementation completed.
-- Required endpoint set implemented.
-- Required FAQ categories included (15+ intents).
-- Confidence + escalation behavior implemented.
-- SQLite logging implemented and visible via API/UI.
-- Accuracy evaluation script included.
-- Modular, readable, and locally runnable codebase.
-
-## Assignment 4: Testing & Validation
-Run the following commands from project root:
+## Run Tests
 
 ```bash
-pip install -r backend/requirements.txt
 pytest
+```
+
+Optional:
+```bash
 python evaluate.py
 ```
+
+## Quick Demo Queries
+
+- Ecommerce: `Where is my order?`, `I want a refund.`
+- Healthcare: `How can I book a doctor appointment?`, `I need urgent medical help.`
+- Banking: `How can I reset my ATM PIN?`, `I found an unknown transaction.`

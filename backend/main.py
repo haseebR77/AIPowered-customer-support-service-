@@ -3,6 +3,7 @@ from typing import List
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 try:
@@ -17,7 +18,24 @@ except ImportError:  # pragma: no cover
 
 app = FastAPI(title="AI-Powered Customer Support Service", version="1.0.0")
 Base.metadata.create_all(bind=engine)
-chatbot = SupportChatbot(threshold=0.62)
+
+
+def ensure_log_schema_columns() -> None:
+    """Backfills newer log columns for existing SQLite databases."""
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(interaction_logs)")).fetchall()
+        column_names = {row[1] for row in rows}
+        if "detected_domain" not in column_names:
+            conn.execute(
+                text(
+                    "ALTER TABLE interaction_logs "
+                    "ADD COLUMN detected_domain VARCHAR NOT NULL DEFAULT 'general'"
+                )
+            )
+
+
+ensure_log_schema_columns()
+chatbot = SupportChatbot(threshold=0.50)
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,6 +61,7 @@ def ask_question(payload: AskRequest, db: Session = Depends(get_db)):
 
     log = InteractionLog(
         user_query=query,
+        detected_domain=result["domain"],
         detected_intent=result["intent"],
         bot_response=result["response"],
         confidence=result["confidence"],
@@ -67,6 +86,7 @@ def escalate_query(payload: EscalateRequest, db: Session = Depends(get_db)):
 
     log = InteractionLog(
         user_query=query,
+        detected_domain="general",
         detected_intent="manual_escalation",
         bot_response=response_message,
         confidence=0.0,
@@ -75,14 +95,7 @@ def escalate_query(payload: EscalateRequest, db: Session = Depends(get_db)):
 
     db.add(log)
     db.commit()
-    db.refresh(log)
-
-    return {
-        "message": "Escalation recorded successfully.",
-        "log_id": log.id,
-        "query": query,
-        "escalated": True,
-    }
+    return {"status": "success", "message": "Your query has been escalated to human support."}
 
 
 @app.get("/logs", response_model=List[LogOut])

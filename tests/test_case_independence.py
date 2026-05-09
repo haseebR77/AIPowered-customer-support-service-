@@ -38,32 +38,28 @@ def test_ecommerce_query_supported(client: TestClient):
     response = client.post("/ask", json={"query": "Where is my order?"})
     assert response.status_code == 200
     payload = response.json()
-    assert payload["intent"] in {
-        "order_status",
-        "delivery_time",
-        "shipping_charges",
-    }
+    assert payload["domain"] == "ecommerce"
+    assert payload["intent"] == "order_status"
     assert isinstance(payload["response"], str)
     assert payload["response"].strip() != ""
+    assert payload["escalated"] is False
 
 
-def test_healthcare_query_is_safely_handled(client: TestClient):
+def test_healthcare_query_supported(client: TestClient):
     response = client.post("/ask", json={"query": "How can I book a doctor appointment?"})
     assert response.status_code == 200
     payload = response.json()
-    assert "intent" in payload
-    assert "response" in payload
+    assert payload["domain"] == "healthcare"
+    assert payload["intent"] == "appointment_booking"
     assert isinstance(payload["response"], str)
-    # Unsupported domain should be escalated or safely handled.
-    assert payload["escalated"] in (True, False)
+    assert payload["escalated"] is False
 
 
-def test_banking_query_is_safely_handled(client: TestClient):
-    response = client.post("/ask", json={"query": "How can I reset my debit card PIN?"})
+def test_banking_query_supported(client: TestClient):
+    response = client.post("/ask", json={"query": "How can I reset my ATM PIN?"})
     assert response.status_code == 200
     payload = response.json()
-    assert "intent" in payload
-    assert "response" in payload
+    assert payload["domain"] == "banking"
+    assert payload["intent"] == "atm_pin_reset"
     assert isinstance(payload["response"], str)
-    # Unsupported domain should be escalated or safely handled.
-    assert payload["escalated"] in (True, False)
+    assert payload["escalated"] is False
